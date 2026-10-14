@@ -587,6 +587,15 @@ std::uint32_t EmitRuntimeBufferLoad(SpirvValueEmitContext& context, const IrValu
             }
             return composite(state, components, values);
         };
+        if (memory.gpuDescriptor && components > 1u && memory.dataBits == 32u && state.bdaProbeFunction != 0u) {
+            const auto first = address(context, instruction, resource, 0u, 4u);
+            const auto last = address(context, instruction, resource, (components - 1u) * 4u, 4u);
+            const auto expectedLast = Binary(state, spv::OpIAdd, TypeScalarU64(state), first.guest, BdaConstant(state, (components - 1u) * 4u));
+            const auto contiguous = both(state, Unary(state, spv::OpLogicalNot, TypeBool(state), resource.swizzle), equal(state, last.guest, expectedLast));
+            return EmitValueIfElse(state, both(state, contiguous, both(state, first.inBounds, last.inBounds)), type, [&] {
+                return composite(state, components, EmitBdaDwordReads(context, instruction, first.guest, 0u, components, true));
+            }, readComponents);
+        }
         if (components != 2u || !memory.coherent || memory.gpuDescriptor || state.storageBufferU64Variable == 0u) return readComponents();
         const auto runtime = address(context, instruction, resource, 0u, 8u);
         const auto wide = directAccess(context, instruction, true);
